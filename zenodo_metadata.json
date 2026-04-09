@@ -1,0 +1,11 @@
+{
+  "title": "Annotation Files and Datasets for CNV Detection Protocol",
+  "creators": [
+    {"name": "Chen Xiang", "affiliation": "UESTC"}
+  ],
+  "description": "This dataset contains annotation files and example datasets used in the CNV detection protocol, including reference genomes, interval lists, and pedigree files.",
+  "keywords": ["CNV", "annotation", "genomics", "protocol"],
+  "access_right": "open",
+  "license": "CC-BY-4.0",
+  "upload_type": "dataset"
+}

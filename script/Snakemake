@@ -1,0 +1,236 @@
+# Define variables
+reference = "path_to_reference_genome"
+workpath = "path_to_work_directory"
+picard = "path_to_picard.jar"
+gatk = "path_to_gatk"
+Mills_and_1000G_gold_standard_indels = "path_to_Mills_and_1000G_gold_standard_indels.vcf"
+KG_phase1_snp = "path_to_KG_phase1_snp.vcf"
+dbsnp138 = "path_to_dbsnp138.vcf"
+samples = ["sample1", "sample2", "sample3"]  # Add all sample names here
+
+# step 1: preprocessing fastq data from WES
+
+rule all:
+    input:
+        expand(f"{workpath}/gc.filtered.500.interval_list", sample=samples),
+        expand(f"{workpath}/model/baseline-calls", sample=samples)
+
+# BWA alignment and processing
+rule bwa_align:
+    input:
+        fq1 = f"{workpath}/{{sample}}_val_1.fq.gz",
+        fq2 = f"{workpath}/{{sample}}_val_2.fq.gz"
+    output:
+        bam = f"{workpath}/{{sample}}.bam"
+    shell:
+        """
+        bwa mem -a -M -t 12 -O 5 -E 3 -R "@RG\tID:{wildcards.sample}\tSM:{wildcards.sample}\tLB:{wildcards.sample}\tPL:ILLUMINA" \
+          {reference} {input.fq1} {input.fq2} | \
+        samtools view -b -o {output.bam}
+        """
+
+rule sort_bam:
+    input:
+        rules.bwa_align.output.bam
+    output:
+        f"{workpath}/{{sample}}.sort.bam"
+    shell:
+        "samtools sort -@ 8 -o {output} {input}"
+
+rule mark_duplicates:
+    input:
+        rules.sort_bam.output
+    output:
+        bam = f"{workpath}/{{sample}}.dedup.bam",
+        metrics = f"{workpath}/{{sample}}.dedup.metrics"
+    shell:
+        "{picard} MarkDuplicates INPUT={input} OUTPUT={output.bam} METRICS_FILE={output.metrics}"
+
+rule index_bam:
+    input:
+        f"{workpath}/{{sample}}.dedup.bam"
+    output:
+        f"{workpath}/{{sample}}.dedup.bam.bai"
+    shell:
+        "samtools index {input}"
+
+rule base_recalibrator:
+    input:
+        bam = rules.mark_duplicates.output,
+        Mills = Mills_and_1000G_gold_standard_indels,
+        KG = KG_phase1_snp,
+        dbsnp = dbsnp138
+    output:
+        f"{workpath}/{{sample}}.recal_data.grp"
+    shell:
+        "{gatk} --java-options -Xmx24g BaseRecalibrator -R {reference} -I {input.bam} --known-sites {input.Mills} --known-sites {input.KG} --known-sites {input.dbsnp} -O {output}"
+
+rule apply_bqsr:
+    input:
+        bam = rules.mark_duplicates.output.bam,
+        recal_table = rules.base_recalibrator.output
+    output:
+        f"{workpath}/{{sample}}.recal.bam"
+    shell:
+        "{gatk} --java-options -Xmx24g ApplyBQSR -R {reference} -I {input.bam} -bqsr {input.recal_table} -O {output}"
+
+# step 2: Train models
+
+# CNV calling pipeline
+rule collect_read_counts:
+    input:
+        rules.apply_bqsr.output
+    output:
+        f"{workpath}/{{sample}}.readcounts.tsv"
+    shell:
+        "{gatk} --java-options -Xmx24g CollectReadCounts -L {workpath}/targets.preprocessed.500.interval_list -R {reference} -imr OVERLAPPING_ONLY -I {input} --format TSV -O {output}"
+
+rule preprocess_intervals:
+    output:
+        f"{workpath}/targets.preprocessed.500.interval_list"
+    shell:
+        "{gatk} --java-options -Xmx24g PreprocessIntervals -R {reference} -L {workpath}/path_to_exon_interval --bin-length 0 --padding 250 -imr OVERLAPPING_ONLY -O {output}"
+
+rule annotate_intervals:
+    input:
+        rules.preprocess_intervals.output
+    output:
+        f"{workpath}/targets.preprocessed.500.annotated_intervals.tsv"
+    shell:
+        "{gatk} --java-options -Xmx24g AnnotateIntervals -L {input} -R {reference} -imr OVERLAPPING_ONLY -O {output}"
+
+rule filter_intervals:
+    input:
+        rules.annotate_intervals.output,
+        expand(f"{workpath}/{{sample}}.readcounts.tsv", sample=samples)
+    output:
+        f"{workpath}/gc.filtered.500.interval_list"
+    shell:
+        "{gatk} --java-options -Xmx24g FilterIntervals -L {rules.preprocess_intervals.output} --annotated-intervals {input[0]} {input[1:]} -imr OVERLAPPING_ONLY -O {output}"
+
+rule generate_ploidy_priors:
+    input:
+        rules.preprocess_intervals.output
+    output:
+        f"{workpath}/contig_ploidy_priors.tsv"
+    shell:
+        """
+        grep -v '^@' {input} | awk -F"\t" '{{print $1}}' | uniq | \
+        awk 'BEGIN {{print "CONTIG_NAME\tPLOIDY_PRIOR_0\tPLOIDY_PRIOR_1\tPLOIDY_PRIOR_2\tPLOIDY_PRIOR_3"}} {{print $1, 0.1, 0.3, 0.5, 0.1}}' OFS="\t" > {output}
+        """
+
+rule determine_contig_ploidy:
+    input:
+        rules.filter_intervals.output,
+        expand(f"{workpath}/{{sample}}.readcounts.tsv", sample=samples),
+        rules.generate_ploidy_priors.output
+    output:
+        f"{workpath}/model/ploidy-calls"
+    shell:
+        "{gatk} --java-options -Xmx24g DetermineGermlineContigPloidy -L {input[0]} --interval-merging-rule OVERLAPPING_ONLY {input[1]} --contig-ploidy-priors {input[2]} --output {workpath}/model --output-prefix ploidy --verbosity DEBUG"
+
+rule call_cnvs:
+    input:
+        rules.filter_intervals.output,
+        expand(f"{workpath}/{{sample}}.readcounts.tsv", sample=samples),
+        rules.determine_contig_ploidy.output
+    output:
+        f"{workpath}/model/baseline-calls"
+    shell:
+        "{gatk} --java-options -Xmx24g GermlineCNVCaller --run-mode COHORT -L {input[0]} {input[1]} --contig-ploidy-calls {input[2]} --annotated-intervals {rules.annotate_intervals.output} --interval-merging-rule OVERLAPPING_ONLY --output {workpath}/model --output-prefix baseline --verbosity DEBUG"
+
+
+# step3: joint_germline_cnv_segmentation
+
+# List of samples
+samples = glob_wildcards(f"{vcflist_path}/*.genotyped-segments.vcf.gz").wildcards
+
+rule all:
+    input:
+        f"{workpath}/cnv_gvcf_clustered.vcf.gz"
+
+rule joint_germline_cnv_segmentation:
+    input:
+        expand(f"{vcflist_path}/{{sample}}.genotyped-segments.vcf.gz", sample=samples),
+        reference,
+        interval,
+        pedigree_file
+    output:
+        f"{workpath}/cnv_gvcf_clustered.vcf.gz"
+    shell:
+        """
+        {gatk} --java-options {java_para} JointGermlineCNVSegmentation \
+            -R {input[0]} \
+            -V {} \
+            --model-call-intervals {input[-2]} \
+            --pedigree {input[-1]} \
+            -O {output}
+        """
+
+# step 4: CNV annotating
+
+# Define variables
+AnnotSV_annotations = "path_to_annotation_file_directory"
+vcf = "path_to_vcf_file"  # Specify the path to your VCF file
+workpath = "path_to_output_directory"  # Specify the output directory
+output_file = "output_file_name"  # Specify the output file
+knotAnnotSV_path = "/path/to/install/knotAnnotSV"
+configFile = f"{knotAnnotSV_path}/config_AnnotSV.yaml"  # Path to the config file
+annotSVfile = f"{workpath}/cnv_gvcf_clustered.annotated.tsv"
+genomeBuild = "hg19"
+
+rule all:
+    input:
+        f"{workpath}/{output_file}",  # Output from AnnotSV
+        f"{workpath}/test.annotated.tsv"  # Output from knotAnnotSV
+
+rule run_annot_sv:
+    input:
+        vcf,
+        AnnotSV_annotations
+    output:
+        f"{workpath}/{output_file}"
+    shell:
+        """
+        AnnotSV -annotationsDir {input[1]} \
+        -SVinputFile {input[0]} \
+        -outputFile {output}
+        """
+
+# step 5: CNV annotation visualization
+
+rule run_knotAnnotSV:
+    input:
+        f"{workpath}/{output_file}"
+    output:
+        f"{workpath}/test.annotated.tsv"
+    shell:
+        """
+        perl {knotAnnotSV_path}/knotAnnotSV.pl \
+            --configFile {configFile} \
+            --annotSVfile {input} \
+            --outDir {workpath} \
+            --outPrefix test \
+            --genomeBuild {genomeBuild} \
+            --LOEUFcolorRange 1 \
+            --datatableDir DataTables
+        """
+
+rule run_knotAnnotSV2XL:
+    input:
+        f"{workpath}/{output_file}"
+    output:
+        f"{workpath}/test.xlsx"  # Assuming the output is an Excel file
+    shell:
+        """
+        perl {knotAnnotSV_path}/knotAnnotSV2XL.pl \
+            --configFile {configFile} \
+            --annotSVfile {input} \
+            --outDir {workpath} \
+            --outPrefix test \
+            --genomeBuild {genomeBuild} \
+            --LOEUFcolorRange 1 \
+            --datatableDir DataTables
+        """
+
+# step 6: 

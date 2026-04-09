@@ -1,0 +1,8 @@
+name: cnv_workflow
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - gatk=4.2.0.0
+  - snakemake

@@ -1,0 +1,202 @@
+import pandas as pd
+
+# Define the input file containing the necessary information
+input_file = "data/dataset/20130502.phase3.exome.sequence.index"  # Replace with your actual input file path
+
+# Load the relevant data from the input file
+data = pd.read_csv(input_file, sep="\t")  # Adjust the separator if needed
+
+# Filter rows where the first column contains "_1.filt.fastq.gz"
+filtered_data = data[data.iloc[:, 0].str.contains("_1.filt.fastq.gz")]
+
+# Create a list of tuples (sample_name, url_1, url_2)
+downloads = [(row[2], row[0].replace("_1.filt.fastq.gz", "_1.filt.fastq.gz"), 
+               row[0].replace("_1.filt.fastq.gz", "_2.filt.fastq.gz")) for idx, row in filtered_data.iterrows()]
+
+
+# Define rules for downloading and renaming files
+
+SAMPLES = [name for name, _, _ in downloads]
+
+# Rule to define the final output
+rule all:
+    input:
+        expand("data/bam/{{sample_name}}.recal.bam", sample_name=SAMPLES)  # Add your sample names here
+
+
+
+rule download_fastq:
+    input:
+        url_1=lambda wildcards: next(url for name, url_1, url_2 in downloads if name == wildcards.sample),
+        url_2=lambda wildcards: next(url for name, url_1, url_2 in downloads if name == wildcards.sample)
+    output:
+        "data/fq/{sample}_val_1.fastq.gz",
+        "data/fq/{sample}_val_2.fastq.gz"
+    shell:
+        """
+        wget {input.url_1} -O {output[0]} && 
+        wget {input.url_2} -O {output[1]}
+        """
+
+# Note: Ensure that you have 'wget' installed or replace it with another download method if necessary.
+
+# Rule to align reads using BWA
+rule bwa_align:
+    input:
+        ref="data/ref/hg19_chr20.fa.gz",
+        r1="data/fq/{sample_name}_val_1.fq.gz",
+        r2="data/fq/{sample_name}_val_2.fq.gz"
+    output:
+        "data/bam/{sample_name}.bam"
+    params:
+        rg="@RG\\tID:{sample_name}\\tSM:{sample_name}\\tLB:{sample_name}\\tPL:ILLUMINA",
+        threads=12
+    shell:
+        "bwa mem -a -M -t {params.threads} -O 5 -E 3 -R {params.rg} {input.ref} {input.r1} {input.r2} | "
+        "samtools view -b -o {output}"
+
+# Rule to sort BAM files
+rule sort_bam:
+    input:
+        "data/bam/{sample_name}.bam"
+    output:
+        "data/bam/{sample_name}.sort.bam"
+    params:
+        threads=8
+    shell:
+        "samtools sort -@ {params.threads} -o {output} {input}"
+
+# Rule to mark duplicates using Picard
+rule mark_duplicates:
+    input:
+        bam="data/bam/{sample_name}.sort.bam"
+    output:
+        dedup_bam="data/bam/{sample_name}.dedup.bam",
+        metrics="data/bam/{sample_name}.dedup.metrics"
+    params:
+        picard_jar="picard.jar",
+        memory="24g"
+    shell:
+        "java -Xmx{params.memory} -jar {params.picard_jar} MarkDuplicates "
+        "INPUT={input.bam} OUTPUT={output.dedup_bam} METRICS_FILE={output.metrics} && "
+        "samtools index {output.dedup_bam}"
+
+# Rule for base recalibration
+rule base_recalibrate:
+    input:
+        bam="data/bam/{sample_name}.dedup.bam",
+        ref="data/ref/hg19_chr20.fa.gz"
+    output:
+        "data/bam/{sample_name}.recal_data.grp"
+    params:
+        memory="24g"
+    shell:
+        "gatk --java-options '-Xmx{params.memory}' BaseRecalibrator "
+        "-R {input.ref} -I {input.bam} "
+        "--known-sites data/ref/Mills_and_1000G_gold_standard_indels.vcf "
+        "--known-sites data/ref/KG_phase1_snp.vcf "
+        "--known-sites data/ref/dbsnp138.vcf "
+        "-O {output}"
+
+# Rule to apply base quality score recalibration
+rule apply_bqsr:
+    input:
+        bam="data/bam/{sample_name}.dedup.bam",
+        recal_data="data/bam/{sample_name}.recal_data.grp",
+        ref="data/ref/hg19_chr20.fa.gz"
+    output:
+        "data/bam/{sample_name}.recal.bam"
+    params:
+        memory="24g"
+    shell:
+        "gatk --java-options '-Xmx{params.memory}' ApplyBQSR "
+        "-R {input.ref} -I {input.bam} -bqsr {input.recal_data} "
+        "-O {output}"
+
+# Rule to index the final recalibrated BAM file
+rule index_recal_bam:
+    input:
+        "data/bam/{sample_name}.recal.bam"
+    output:
+        "data/bam/{sample_name}.recal.bai"
+    shell:
+        "samtools index {input}"
+
+# CNV Calling Workflow
+rule collect_read_counts:
+    input:
+        bam="path_to_bam_file",
+        interval="path_to_interval_file",
+        reference="path_to_reference_genome"
+    output:
+        readcounts="{sample}.readcounts.tsv"
+    shell:
+        """
+        gatk CollectReadCounts \
+            -L {input.interval} \
+            -R {input.reference} \
+            -imr OVERLAPPING_ONLY \
+            -I {input.bam} \
+            --format TSV \
+            -O {output.readcounts}
+        """
+
+rule determine_germline_contig_ploidy:
+    input:
+        readcounts="{sample}.readcounts.tsv",
+        model="path_to_model/ploidy-model"
+    output:
+        ploidy_calls="ploidy-case-calls"
+    shell:
+        """
+        gatk DetermineGermlineContigPloidy \
+            --model {input.model} \
+            -I {input.readcounts} \
+            -O {output.ploidy_calls} \
+            --output-prefix ploidy-case \
+            --verbosity DEBUG
+        """
+
+rule call_germline_cnvs:
+    input:
+        readcounts="{sample}.readcounts.tsv",
+        ploidy_calls="ploidy-case-calls",
+        model="path_to_model/baseline-model"
+    output:
+        cnv_calls="{sample}-calls"
+    shell:
+        """
+        gatk GermlineCNVCaller \
+            --run-mode CASE \
+            -I {input.readcounts} \
+            --contig-ploidy-calls {input.ploidy_calls} \
+            --model {input.model} \
+            --output {output.cnv_calls} \
+            --output-prefix {wildcards.sample} \
+            --verbosity DEBUG
+        """
+
+rule postprocess_germline_cnv_calls:
+    input:
+        cnv_calls="{sample}-calls",
+        ploidy_calls="ploidy-case-calls",
+        model="path_to_model/baseline-model",
+        reference_dict="path_to_reference_sequence_dictionary"
+    output:
+        genotyped_intervals="{sample}.genotyped-intervals.vcf.gz",
+        genotyped_segments="{sample}.genotyped-segments.vcf.gz",
+        denoised_copy_ratios="{sample}.denoised-copy-ratios.txt"
+    shell:
+        """
+        gatk PostprocessGermlineCNVCalls \
+            --model-shard-path {input.model} \
+            --calls-shard-path {input.cnv_calls} \
+            --allosomal-contig chrX --allosomal-contig chrY \
+            --contig-ploidy-calls {input.ploidy_calls} \
+            --sample-index 0 \
+            --output-genotyped-intervals {output.genotyped_intervals} \
+            --output-genotyped-segments {output.genotyped_segments} \
+            --output-denoised-copy-ratios {output.denoised_copy_ratios} \
+            --sequence-dictionary {input.reference_dict}
+        """
+

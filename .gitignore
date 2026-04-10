@@ -1,0 +1,17 @@
+# Ignore local runtime files and large generated files
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv
+env/
+venv/
+work/
+plans/
+*.log
+*.tmp
+*.swp
+*.bak
+*.rhistory

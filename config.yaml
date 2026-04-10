@@ -1,0 +1,8 @@
+# Global configuration for the CNV Snakemake workflow
+reference: data/hg19_chr20.fa.gz
+reference_dict: data/hg19_chr20.dict
+interval: data/targets.preprocessed.500.interval_list
+model: model/baseline-model
+ploidy_model: model/ploidy-model
+gatk: gatk
+workdir: work

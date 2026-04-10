@@ -25,12 +25,8 @@ jobs:
         run: |
           conda activate cnv_test
           conda install -y -c bioconda snakemake
-      - name: Run plan agent (smoke test)
+      - name: Run smoke workflow
         run: |
           conda activate cnv_test
-          python scripts/plan_agent.py --sample EXAMPLE --bam data/bam/EXAMPLE.recal.bam --out plans/EXAMPLE.plan.yaml
-      - name: Snakemake dry-run
-        run: |
-          conda activate cnv_test
-          cd snakemake
-          snakemake -n -p
+          # run minimal smoke workflow to validate end-to-end DAG
+          snakemake -s snakemake/smoke/Snakefile -j1

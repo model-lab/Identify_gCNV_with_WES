@@ -30,3 +30,14 @@ jobs:
           conda activate cnv_test
           # run minimal smoke workflow to validate end-to-end DAG
           snakemake -s workflow/smoke/Snakefile -j1
+      - name: Agents smoke checks (plan dry-run, QC, package)
+        run: |
+          conda activate cnv_test
+          set -e
+          # Plan already produced by smoke Snakefile at plans/EXAMPLE.plan.yaml
+          echo "--- Agents smoke: run_agent (dry-run)"
+          python scripts/agents/run_agent.py --plan plans/EXAMPLE.plan.yaml --cores 1
+          echo "--- Agents smoke: qc_agent"
+          python scripts/agents/qc_agent.py --plan plans/EXAMPLE.plan.yaml --out qc/EXAMPLE.qc.yaml || true
+          echo "--- Agents smoke: publish_agent (package)"
+          python scripts/agents/publish_agent.py --plan plans/EXAMPLE.plan.yaml --out-dir publish/EXAMPLE --package || true

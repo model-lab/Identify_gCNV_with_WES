@@ -42,3 +42,28 @@ Project layout (standardized):
 - `outputs/`  : generated results (suggested output dir)
 
 If you want to keep the old `snakemake/` folder as a backup, it's safe to do so, otherwise you can remove it after verifying `workflow/` runs correctly.
+
+Agents (examples)
+- Generate a plan for a sample:
+
+```bash
+python scripts/plan_agent.py --sample HG00099 --bam data/bam/HG00099.recal.bam --out plans/HG00099.plan.yaml
+```
+
+- Dry-run the run-agent (prints `snakemake` command):
+
+```bash
+python scripts/agents/run_agent.py --plan plans/HG00099.plan.yaml --cores 2
+```
+
+- Run QC on a plan's outputs:
+
+```bash
+python scripts/agents/qc_agent.py --plan plans/HG00099.plan.yaml --out qc/HG00099.qc.yaml
+```
+
+- Prepare a publish package (creates `publish/HG00099` and a tarball):
+
+```bash
+python scripts/agents/publish_agent.py --plan plans/HG00099.plan.yaml --out-dir publish/HG00099 --package
+```

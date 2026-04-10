@@ -10,6 +10,16 @@ This repository uses a clear layout for a Snakemake-based CNV pipeline.
 - `outputs/` — suggested output directory for final results (created by workflow runs).
 - `.github/` — CI workflows (now points at `workflow/smoke/Snakefile` for smoke tests).
 
+Agents
+- `agents/` — human-readable agent descriptors (e.g., `plan.agent.md`, `run.agent.md`).
+- `scripts/agents/` — executable agent implementations: `run_agent.py`, `qc_agent.py`, `publish_agent.py`.
+
+Usage examples
+- Generate a plan: `python scripts/plan_agent.py --sample <S> --bam <BAM> --out plans/<S>.plan.yaml`
+- Dry-run a plan: `python scripts/agents/run_agent.py --plan plans/<S>.plan.yaml`
+- QC: `python scripts/agents/qc_agent.py --plan plans/<S>.plan.yaml --out qc/<S>.qc.yaml`
+- Package for publish: `python scripts/agents/publish_agent.py --plan plans/<S>.plan.yaml --out-dir publish/<S> --package`
+
 Notes:
 
 - Run the workflow from the `workflow/` directory. `workflow/config.yaml` contains repo-relative defaults.

@@ -1,0 +1,37 @@
+rule all:
+    input:
+        "plans/EXAMPLE.plan.yaml",
+        "outputs/EXAMPLE.genotyped-intervals.vcf.gz",
+        "outputs/EXAMPLE.genotyped-segments.vcf.gz"
+
+rule create_fake_bam:
+    output:
+        "data/bam/EXAMPLE.recal.bam"
+    shell:
+        """
+        mkdir -p data/bam
+        touch {output}
+        """
+
+rule run_plan_agent:
+    input:
+        bam="data/bam/EXAMPLE.recal.bam"
+    output:
+        plan="plans/EXAMPLE.plan.yaml"
+    params:
+        script="../scripts/plan_agent.py"
+    shell:
+        "python {params.script} --sample EXAMPLE --bam {input.bam} --out {output.plan}"
+
+rule fake_postprocess:
+    input:
+        plan="plans/EXAMPLE.plan.yaml"
+    output:
+        intervals="outputs/EXAMPLE.genotyped-intervals.vcf.gz",
+        segments="outputs/EXAMPLE.genotyped-segments.vcf.gz"
+    shell:
+        """
+        mkdir -p outputs
+        echo "##FAKE VCF" > {output.intervals}
+        echo "##FAKE SEGMENTS" > {output.segments}
+        """

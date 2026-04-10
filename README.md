@@ -22,12 +22,23 @@ git lfs install
 python scripts/plan_agent.py --sample HG00099 --bam data/bam/HG00099.recal.bam --out plans/HG00099.plan.yaml
 ```
 
-4. Run Snakemake from the `snakemake` directory to execute the pipeline for a sample (or customize `Snakefile` targets):
+4. Run Snakemake from the `workflow/` directory to execute the pipeline for a sample (or customize `Snakefile` targets):
 
 ```bash
-cd snakemake
-snakemake --cores 4 run_plan_agent output: ../plans/HG00099.plan.yaml
-snakemake --cores 4 collect_read_counts
+cd workflow
+snakemake --cores 4 run_plan_agent --configfile config.yaml
+snakemake --cores 4 collect_read_counts --configfile config.yaml
 ```
 
-See `config.yaml` for configurable paths (references, models, workdir).
+See `workflow/config.yaml` for configurable paths (references, models, workdir).
+
+Project layout (standardized):
+
+- `workflow/` : Snakemake `Snakefile`, `config.yaml`, and smoke tests
+- `scripts/`  : helper scripts (plan agent, download, etc.)
+- `data/`     : reference fasta, interval lists, prepared inputs
+- `model/`    : trained models used by callers
+- `plans/`    : per-sample plan yaml files
+- `outputs/`  : generated results (suggested output dir)
+
+If you want to keep the old `snakemake/` folder as a backup, it's safe to do so, otherwise you can remove it after verifying `workflow/` runs correctly.

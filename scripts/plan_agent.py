@@ -12,8 +12,8 @@ import yaml
 
 def guess_params(sample, bam, out):
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    # sensible defaults within the repository; allow override from config.yaml
-    config_path = os.path.join(repo_root, 'config.yaml')
+    # sensible defaults within the repository; allow override from workflow/config.yaml
+    config_path = os.path.join(repo_root, 'workflow', 'config.yaml')
     reference = os.path.join('data', 'hg19_chr20.fa.gz')
     reference_dict = os.path.join('data', 'hg19_chr20.dict')
     interval = os.path.join('data', 'targets.preprocessed.500.interval_list')

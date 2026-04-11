@@ -1,8 +1,48 @@
 # Workflow-local configuration for the CNV Snakemake workflow
+
+# = Paths and model locations
 reference: ../data/hg19_chr20.fa.gz
 reference_dict: ../data/hg19_chr20.dict
 interval: ../data/targets.preprocessed.500.interval_list
 model: ../model/baseline-model
 ploidy_model: ../model/ploidy-model
-gatk: gatk
 workdir: ../work
+
+# Model training parameters (placeholders)
+model_training:
+	epochs: 1
+	sample_fraction: 0.01
+
+# = Primary tools (executable names or conda commands)
+gatk: gatk
+bwa: bwa
+samtools: samtools
+picard: picard
+
+# = Annotation / visualization binaries and resources
+annotsv: annotsv
+annotsv_annotations_dir: ../data/AnnotSV_annotations
+knotannotsv_dir: /path/to/knotAnnotSV
+vcf2circos: vcf2circos
+vcf2circos_config: ../data/config_vcf2circos.tar.gz
+
+# R-based visualization helpers
+plotcnv_Rscript: Rscript
+handycnv_Rscript: Rscript
+
+# IGV (viewer) and other interactive helpers
+igv: igv.sh
+
+# Order of visualization steps (executed by the workflow where relevant)
+visualization_tools:
+	- knotAnnotSV
+	- vcf2circos
+	- plotcnv
+	- handycnv
+
+# External services / guidance URLs
+segmentmodel_spy_url: https://genomespy.app/segmentmodel/
+
+# Notes:
+# - Keep keys at top-level for compatibility with the Snakefile and agent scripts.
+# - Update any paths above to absolute or repo-relative values if you relocate files.

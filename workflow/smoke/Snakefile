@@ -3,24 +3,29 @@ import os
 # Resolve repository root (two levels up from this Snakefile: workflow/smoke -> repo root)
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
+# Smoke tmp directory used by `tests/smoke/run_smoke.py`
+TMP = os.path.join(ROOT, 'tests', 'smoke', 'tmp')
+
 rule all:
     input:
         os.path.join(ROOT, "plans", "EXAMPLE.plan.yaml"),
-        os.path.join(ROOT, "outputs", "EXAMPLE.genotyped-intervals.vcf.gz"),
-        os.path.join(ROOT, "outputs", "EXAMPLE.genotyped-segments.vcf.gz")
+        os.path.join(TMP, "EXAMPLE.genotyped-intervals.vcf.gz"),
+        os.path.join(TMP, "EXAMPLE.genotyped-segments.vcf.gz")
+
 
 rule create_fake_bam:
     output:
-        os.path.join(ROOT, "data", "bam", "EXAMPLE.recal.bam")
+        os.path.join(TMP, "EXAMPLE.recal.bam")
     shell:
         """
-        mkdir -p ../data/bam
+        mkdir -p {os.path.dirname(output[0])}
         touch {output}
         """
 
+
 rule run_plan_agent:
     input:
-        bam=os.path.join(ROOT, "data", "bam", "EXAMPLE.recal.bam")
+        bam=os.path.join(TMP, "EXAMPLE.recal.bam")
     output:
         plan=os.path.join(ROOT, "plans", "EXAMPLE.plan.yaml")
     params:
@@ -28,15 +33,92 @@ rule run_plan_agent:
     shell:
         "python {params.script} --sample EXAMPLE --bam {input.bam} --out {output.plan}"
 
+
 rule fake_postprocess:
     input:
         plan=os.path.join(ROOT, "plans", "EXAMPLE.plan.yaml")
     output:
-        intervals=os.path.join(ROOT, "outputs", "EXAMPLE.genotyped-intervals.vcf.gz"),
-        segments=os.path.join(ROOT, "outputs", "EXAMPLE.genotyped-segments.vcf.gz")
+        intervals=os.path.join(TMP, "EXAMPLE.genotyped-intervals.vcf.gz"),
+        segments=os.path.join(TMP, "EXAMPLE.genotyped-segments.vcf.gz")
     shell:
         """
-        mkdir -p ../outputs
+        mkdir -p {os.path.dirname(output[0])}
         echo "##FAKE VCF" > {output.intervals}
         echo "##FAKE SEGMENTS" > {output.segments}
         """
+
+
+rule create_interval_list:
+    output:
+        os.path.join(TMP, 'targets.preprocessed.500.interval_list')
+    params:
+        script=os.path.join(ROOT, 'scripts', 'preprocess_intervals.py')
+    shell:
+        'python3 {params.script} --out {output}'
+
+
+rule train_models:
+    input:
+        plan=os.path.join(ROOT, 'plans', 'EXAMPLE.plan.yaml')
+    output:
+        os.path.join(TMP, 'baseline.trained.json'),
+        os.path.join(TMP, 'ploidy.trained.json')
+    params:
+        script=os.path.join(ROOT, 'scripts', 'train_model.py')
+    shell:
+        'python3 {params.script} --out-baseline {output[0]} --out-ploidy {output[1]}'
+
+
+rule joint_calling:
+    input:
+        expand(os.path.join(TMP, '{x}'), x=['baseline.trained.json'])
+    output:
+        os.path.join(TMP, 'cnv_gvcf_clustered.vcf.gz')
+    params:
+        script=os.path.join(ROOT, 'scripts', 'joint_calling.py')
+    shell:
+        'python3 {params.script} --out {output}'
+
+
+rule annotate_calls:
+    input:
+        vcf=os.path.join(TMP, 'cnv_gvcf_clustered.vcf.gz')
+    output:
+        os.path.join(TMP, 'cnv_gvcf_clustered.annotated.tsv')
+    params:
+        script=os.path.join(ROOT, 'scripts', 'run_annotsv.py')
+    shell:
+        'python3 {params.script} --in {input.vcf} --out {output} --annotations-dir {os.path.join(ROOT, "data", "AnnotSV_annotations")}'
+
+
+rule visualize_knot:
+    input:
+        annotated=os.path.join(TMP, 'cnv_gvcf_clustered.annotated.tsv')
+    output:
+        os.path.join(TMP, 'knot_out', 'knot_placeholder.html')
+    params:
+        script=os.path.join(ROOT, 'scripts', 'visualize_knotannotsv.py')
+    shell:
+        'python3 {params.script} --annotated {input.annotated} --out-dir {os.path.join(TMP, "knot_out")}'
+
+
+rule visualize_vcf2circos:
+    input:
+        vcf=os.path.join(TMP, 'cnv_gvcf_clustered.vcf.gz')
+    output:
+        directory(os.path.join(TMP, 'vcf2_out'))
+    params:
+        script=os.path.join(ROOT, 'scripts', 'visualize_vcf2circos.py')
+    shell:
+        'python3 {params.script} --vcf {input.vcf} --out-dir {output}'
+
+
+rule visualize_cnv_summary:
+    input:
+        annotated=os.path.join(TMP, 'cnv_gvcf_clustered.annotated.tsv')
+    output:
+        os.path.join(TMP, 'cnv_summary.png')
+    params:
+        script=os.path.join(ROOT, 'scripts', 'visualize_cnv.py')
+    shell:
+        'python3 {params.script} --in {input.annotated} --out {output}'

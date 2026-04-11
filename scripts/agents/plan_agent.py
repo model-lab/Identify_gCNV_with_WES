@@ -10,30 +10,38 @@ import sys
 import yaml
 
 
-def guess_params(sample, bam, out):
+def guess_params(sample, bam, out, config_path=None):
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     # sensible defaults within the repository; allow override from workflow/config.yaml
-    config_path = os.path.join(repo_root, 'workflow', 'config.yaml')
-    reference = os.path.join('data', 'hg19_chr20.fa.gz')
-    reference_dict = os.path.join('data', 'hg19_chr20.dict')
-    interval = os.path.join('data', 'targets.preprocessed.500.interval_list')
-    model = os.path.join('model', 'baseline-model')
-    ploidy_model = os.path.join('model', 'ploidy-model')
+    if config_path is None:
+        config_path = os.path.join(repo_root, 'workflow', 'config.yaml')
+    reference = os.path.join(repo_root, 'data', 'hg19_chr20.fa.gz')
+    reference_dict = os.path.join(repo_root, 'data', 'hg19_chr20.dict')
+    interval = os.path.join(repo_root, 'data', 'targets.preprocessed.500.interval_list')
+    model = os.path.join(repo_root, 'model', 'baseline-model')
+    ploidy_model = os.path.join(repo_root, 'model', 'ploidy-model')
     gatk = 'gatk'
-    workpath = os.path.join('work', sample)
+    workpath = os.path.join(repo_root, 'work', sample)
 
     # Load config.yaml if present to override defaults
+    cfg = {}
     try:
         if os.path.exists(config_path):
             with open(config_path) as cf:
-                cfg = yaml.safe_load(cf)
-            reference = cfg.get('reference', reference)
-            reference_dict = cfg.get('reference_dict', reference_dict)
-            interval = cfg.get('interval', interval)
-            model = cfg.get('model', model)
-            ploidy_model = cfg.get('ploidy_model', ploidy_model)
+                cfg = yaml.safe_load(cf) or {}
+            # resolve repo-relative paths
+            def _rpath(v):
+                if not v:
+                    return v
+                return v if os.path.isabs(v) else os.path.join(repo_root, v)
+
+            reference = _rpath(cfg.get('reference', reference))
+            reference_dict = _rpath(cfg.get('reference_dict', reference_dict))
+            interval = _rpath(cfg.get('interval', interval))
+            model = _rpath(cfg.get('model', model))
+            ploidy_model = _rpath(cfg.get('ploidy_model', ploidy_model))
             gatk = cfg.get('gatk', gatk)
-            workpath = cfg.get('workdir', workpath)
+            workpath = _rpath(cfg.get('workdir', workpath))
     except Exception:
         pass
 
@@ -50,13 +58,21 @@ def guess_params(sample, bam, out):
 
     plan = {
         'sample': sample,
-        'bam': bam,
+        'bam': os.path.abspath(bam),
         'reference': reference,
         'reference_dict': reference_dict,
         'interval': interval,
         'model': model,
         'ploidy_model': ploidy_model,
         'gatk': gatk,
+        'bwa': cfg.get('bwa', 'bwa'),
+        'samtools': cfg.get('samtools', 'samtools'),
+        'picard': cfg.get('picard', 'picard'),
+        'annotsv': cfg.get('annotsv', 'annotsv'),
+        'plotcnv_Rscript': cfg.get('plotcnv_Rscript', 'Rscript'),
+        'handycnv_Rscript': cfg.get('handycnv_Rscript', 'Rscript'),
+        'igv': cfg.get('igv', 'igv'),
+        'segmentmodel_spy_url': cfg.get('segmentmodel_spy_url'),
         'workpath': workpath,
         'notes': notes,
     }
@@ -68,9 +84,10 @@ def main():
     parser.add_argument('--sample', required=True)
     parser.add_argument('--bam', required=True)
     parser.add_argument('--out', required=True)
+    parser.add_argument('--config', required=False, help='Optional workflow config.yaml to read defaults from')
     args = parser.parse_args()
 
-    plan = guess_params(args.sample, args.bam, args.out)
+    plan = guess_params(args.sample, args.bam, args.out, config_path=args.config)
 
     outdir = os.path.dirname(args.out)
     if outdir and not os.path.exists(outdir):

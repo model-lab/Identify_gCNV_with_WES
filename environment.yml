@@ -1,14 +1,19 @@
 name: cnv_workflow
 channels:
-  - bioconda
   - conda-forge
+  - bioconda
   - defaults
 dependencies:
-  - gatk=4.2.0.0
-  - snakemake
   - python=3.10
-  - pyyaml
-  - pandas
+  - snakemake>=7.0
+  - gatk=4.2.0.0
   - bwa
   - samtools
   - picard
+  - pyyaml
+  - pandas
+  - matplotlib
+  - pip
+
+# Notes: add additional R packages or tools (AnnotSV, knotAnnotSV, PlotCNV, HandyCNV)
+# via system package managers or container images when preparing production runs.

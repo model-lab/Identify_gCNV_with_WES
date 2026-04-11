@@ -1,15 +1,20 @@
-# Base image
+# Dockerfile for workflow developer image
 FROM continuumio/miniconda3
 
-# Set working directory
 WORKDIR /workspace
 
-# Install dependencies
-RUN conda install -y -c bioconda gatk=4.2.0.0 && \
-    conda clean -a
+# Copy environment spec and create the conda env
+COPY environment.yml /workspace/
+RUN conda config --set always_yes yes --set changeps1 no \
+    && conda update -n base -c defaults conda \
+    && conda env create -f environment.yml \
+    && conda clean -afy
 
-# Copy workflow files
+# Ensure the environment is on PATH
+ENV PATH /opt/conda/envs/cnv_workflow/bin:$PATH
+
+# Copy repository into container
 COPY . /workspace
 
-# Set entrypoint
-ENTRYPOINT ["snakemake"]
+# Default to an interactive shell so users can run make targets or snakemake
+ENTRYPOINT ["/bin/bash"]

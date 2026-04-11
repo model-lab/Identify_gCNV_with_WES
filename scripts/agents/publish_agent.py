@@ -15,7 +15,7 @@ def load_plan(path):
 
 
 def gather_files(workpath):
-    patterns = ['*.vcf.gz', '*.vcf', '*.tsv', '*.denoised-copy-ratios*', '*genotyped-segments*']
+    patterns = ['*.vcf.gz', '*.vcf', '*.tsv', '*.denoised-copy-ratios*', '*genotyped-segments*', '*.png', '*.html', '*.pdf', '*.xlsm']
     found = []
     p = Path(workpath)
     if not p.exists():

@@ -3,7 +3,7 @@
 # Script to download annotation files and datasets from Zenodo
 
 # Define Zenodo URLs and output paths
-zenodo_base_url="https://zenodo.org/record/1234567/files"
+zenodo_base_url="https://zenodo.org/record/19489460/files"
 files=(
   "UCSC_RefGene_hg19.bed.gz"
   "contig_ploidy_priors.tsv"

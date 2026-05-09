@@ -213,7 +213,7 @@ rule postprocess_germline_cnv_calls:
     run:
         gatk = config.get('gatk', 'gatk')
         model = config.get('model')
-        cmd = [gatk, 'PostprocessGermlineCNVCalls', '--model-shard-path', model, '--calls-shard-path', input.cnv_calls, '--contig-ploidy-calls', input.ploidy_calls, '--sample-index', '0', '--output-genotyped-intervals', output[0], '--output-genotyped-segments', output[1], '--output-denoised-copy-ratios', output[2], '--sequence-dictionary', config.get('reference_dict')]
+        cmd = [gatk, 'PostprocessGermlineCNVCalls', '--model-shard-path', model, '--calls-shard-path', input.cnv_calls, '--contig-ploidy-calls', input.ploidy_calls, '--sample-index', '0', '--output-prefix', wildcards.sample, '--output-intervals', output[0], '--output-segments', output[1], '--output-denoised-copy-ratios', output[2]]
         try:
             print('Running:', ' '.join(cmd))
             subprocess.check_call(cmd)
@@ -237,8 +237,8 @@ rule train_models:
         os.path.join(ROOT, 'model', 'ploidy-model', '.trained')
     params:
         script=os.path.join(ROOT, 'scripts', 'train_model.py')
-    run:
-        shell('python {params.script} --out-baseline {output[0]} --out-ploidy {output[1]}')
+    shell:
+        'python {params.script} --out-baseline {output[0]} --out-ploidy {output[1]}'
 
 
 rule joint_segmentation:
@@ -330,5 +330,3 @@ rule handycnv_visualize:
             os.makedirs(os.path.dirname(output[0]), exist_ok=True)
             with open(output[0], 'wb') as fh:
                 fh.write(b'')
-        
-

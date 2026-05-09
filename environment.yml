@@ -6,7 +6,7 @@ channels:
 dependencies:
   - python=3.10
   - snakemake>=7.0
-  - gatk=4.2.0.0
+  - gatk=4.5.0.0
   - bwa
   - samtools
   - picard

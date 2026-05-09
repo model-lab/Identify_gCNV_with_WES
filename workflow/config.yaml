@@ -8,10 +8,16 @@ model: ../model/baseline-model
 ploidy_model: ../model/ploidy-model
 workdir: ../work
 
+# = Known-sites VCF files for GATK BQSR (Base Quality Score Recalibration)
+# These should be populated with actual paths to known variant databases
+known_sites_mills: ../data/Mills_and_1000G_gold_standard_indels.vcf.gz
+known_sites_kg: ../data/1000G_omni2.4.sites.vcf.gz
+known_sites_dbsnp: ../data/dbsnp_138.vcf.gz
+
 # Model training parameters (placeholders)
 model_training:
-	epochs: 1
-	sample_fraction: 0.01
+  epochs: 1
+  sample_fraction: 0.01
 
 # = Primary tools (executable names or conda commands)
 gatk: gatk
@@ -35,10 +41,10 @@ igv: igv.sh
 
 # Order of visualization steps (executed by the workflow where relevant)
 visualization_tools:
-	- knotAnnotSV
-	- vcf2circos
-	- plotcnv
-	- handycnv
+  - knotAnnotSV
+  - vcf2circos
+  - plotcnv
+  - handycnv
 
 # External services / guidance URLs
 segmentmodel_spy_url: https://genomespy.app/segmentmodel/

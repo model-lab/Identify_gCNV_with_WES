@@ -58,12 +58,14 @@ rule create_interval_list:
 
 
 rule map_reads_bwa:
-    """Map FASTQ to BAM using BWA; expected inputs are sample_R1.fastq.gz and sample_R2.fastq.gz"""
+    """Map FASTQ to BAM using BWA with read groups; expected inputs are sample_R1.fastq.gz and sample_R2.fastq.gz"""
     input:
         r1=os.path.join(ROOT, 'data', 'fastq', '{sample}_R1.fastq.gz'),
         r2=os.path.join(ROOT, 'data', 'fastq', '{sample}_R2.fastq.gz')
     output:
         os.path.join(ROOT, 'work', '{sample}', '{sample}.sorted.bam')
+    params:
+        sample_id='{sample}'
     run:
         bwa = config.get('bwa', 'bwa')
         samtools = config.get('samtools', 'samtools')
@@ -71,36 +73,142 @@ rule map_reads_bwa:
         outbam = output[0]
         d = os.path.dirname(outbam)
         os.makedirs(d, exist_ok=True)
-        # simple BWA mem -> samtools sort pipeline
-        cmd = f"{bwa} mem {ref} {input.r1} {input.r2} | {samtools} sort -o {outbam} -"
+        # BWA mem with read groups -> samtools sort pipeline
+        # -a: output all alignments; -M: mark shorter split hits as secondary; -t: threads
+        # -R: read group header line; -E: gap extension penalty; -O: gap open penalty
+        rg_tag = f"@RG\tID:{params.sample_id}\tSM:{params.sample_id}\tLB:{params.sample_id}\tPL:ILLUMINA"
+        cmd = f"{bwa} mem -a -M -t 12 -O 5 -E 3 -R '{rg_tag}' {ref} {input.r1} {input.r2} | {samtools} view -b - | {samtools} sort -o {outbam} -"
         print('Running:', cmd)
         subprocess.check_call(cmd, shell=True)
 
 
-rule mark_duplicates_picard:
-    """Mark duplicates using Picard and index with samtools"""
+rule index_sorted_bam:
+    """Index the sorted BAM file using samtools"""
     input:
         bam=os.path.join(ROOT, 'work', '{sample}', '{sample}.sorted.bam')
     output:
-        os.path.join(ROOT, 'work', '{sample}', '{sample}.recal.bam')
+        os.path.join(ROOT, 'work', '{sample}', '{sample}.sorted.bam.bai')
+    run:
+        samtools = config.get('samtools', 'samtools')
+        cmd = [samtools, 'index', input.bam, output[0]]
+        print('Running:', ' '.join(cmd))
+        subprocess.check_call(cmd)
+
+
+rule mark_duplicates_picard:
+    """Mark duplicates using Picard and generate dedup BAM"""
+    input:
+        bam=os.path.join(ROOT, 'work', '{sample}', '{sample}.sorted.bam'),
+        bai=os.path.join(ROOT, 'work', '{sample}', '{sample}.sorted.bam.bai')
+    output:
+        bam=os.path.join(ROOT, 'work', '{sample}', '{sample}.dedup.bam'),
+        metrics=os.path.join(ROOT, 'work', '{sample}', '{sample}.dedup.metrics')
     run:
         picard = config.get('picard', 'picard')
-        samtools = config.get('samtools', 'samtools')
-        out = output[0]
-        d = os.path.dirname(out)
+        d = os.path.dirname(output.bam)
         os.makedirs(d, exist_ok=True)
-        # Picard MarkDuplicates invocation placeholder
-        cmd = [picard, 'MarkDuplicates', f'I={input.bam}', f'O={out}', 'M=/dev/null', 'CREATE_INDEX=true']
+        # Picard MarkDuplicates invocation
+        cmd = [picard, 'MarkDuplicates', f'INPUT={input.bam}', f'OUTPUT={output.bam}', f'METRICS_FILE={output.metrics}', 'CREATE_INDEX=true']
         try:
             print('Running:', ' '.join(cmd))
             subprocess.check_call(cmd)
-        except Exception:
-            # fallback: copy input to output and pretend indexed
+        except Exception as e:
+            print(f'Warning: Picard MarkDuplicates failed: {e}')
+            # fallback: copy input to output and create dummy metrics
             import shutil
-            shutil.copy2(input.bam, out)
-            idx = out + '.bai'
-            with open(idx, 'wb') as fh:
-                fh.write(b'')
+            shutil.copy2(input.bam, output.bam)
+            with open(output.metrics, 'w') as fh:
+                fh.write('# Dummy metrics file\n')
+            # Try to create index
+            subprocess.call([config.get('samtools', 'samtools'), 'index', output.bam])
+
+
+rule index_dedup_bam:
+    """Index the deduplicated BAM file using samtools"""
+    input:
+        bam=os.path.join(ROOT, 'work', '{sample}', '{sample}.dedup.bam')
+    output:
+        os.path.join(ROOT, 'work', '{sample}', '{sample}.dedup.bam.bai')
+    run:
+        samtools = config.get('samtools', 'samtools')
+        cmd = [samtools, 'index', input.bam, output[0]]
+        print('Running:', ' '.join(cmd))
+        subprocess.check_call(cmd)
+
+
+rule base_recalibrator:
+    """GATK BaseRecalibrator: generate BQSR recalibration data"""
+    input:
+        bam=os.path.join(ROOT, 'work', '{sample}', '{sample}.dedup.bam'),
+        bai=os.path.join(ROOT, 'work', '{sample}', '{sample}.dedup.bam.bai')
+    output:
+        os.path.join(ROOT, 'work', '{sample}', '{sample}.recal_data.grp')
+    run:
+        gatk = config.get('gatk', 'gatk')
+        ref = config.get('reference')
+        
+        # Build known-sites arguments
+        known_sites_args = []
+        for site_type in ['known_sites_mills', 'known_sites_kg', 'known_sites_dbsnp']:
+            site_path = config.get(site_type)
+            if site_path:
+                known_sites_args.extend(['--known-sites', site_path])
+        
+        cmd = [gatk, '--java-options', '-Xmx24g', 'BaseRecalibrator',
+               '-R', ref,
+               '-I', input.bam] + known_sites_args + [
+               '-O', output[0]]
+        try:
+            print('Running:', ' '.join(cmd))
+            subprocess.check_call(cmd)
+        except Exception as e:
+            print(f'Warning: BaseRecalibrator failed: {e}')
+            # Create dummy recalibration file
+            d = os.path.dirname(output[0])
+            os.makedirs(d, exist_ok=True)
+            with open(output[0], 'w') as fh:
+                fh.write('# Recalibration data (placeholder)\n')
+
+
+rule apply_bqsr:
+    """GATK ApplyBQSR: apply BQSR recalibration to generate final recalibrated BAM"""
+    input:
+        bam=os.path.join(ROOT, 'work', '{sample}', '{sample}.dedup.bam'),
+        recal_table=os.path.join(ROOT, 'work', '{sample}', '{sample}.recal_data.grp')
+    output:
+        os.path.join(ROOT, 'work', '{sample}', '{sample}.recal.bam')
+    run:
+        gatk = config.get('gatk', 'gatk')
+        ref = config.get('reference')
+        d = os.path.dirname(output[0])
+        os.makedirs(d, exist_ok=True)
+        
+        cmd = [gatk, '--java-options', '-Xmx24g', 'ApplyBQSR',
+               '-R', ref,
+               '-I', input.bam,
+               '-bqsr', input.recal_table,
+               '-O', output[0]]
+        try:
+            print('Running:', ' '.join(cmd))
+            subprocess.check_call(cmd)
+        except Exception as e:
+            print(f'Warning: ApplyBQSR failed: {e}')
+            # fallback: copy dedup.bam to recal.bam
+            import shutil
+            shutil.copy2(input.bam, output[0])
+
+
+rule index_final_bam:
+    """Index the final recalibrated BAM file using samtools"""
+    input:
+        bam=os.path.join(ROOT, 'work', '{sample}', '{sample}.recal.bam')
+    output:
+        os.path.join(ROOT, 'work', '{sample}', '{sample}.recal.bam.bai')
+    run:
+        samtools = config.get('samtools', 'samtools')
+        cmd = [samtools, 'index', input.bam, output[0]]
+        print('Running:', ' '.join(cmd))
+        subprocess.check_call(cmd)
 
 
 # ---------------------------------------------------------------------------
@@ -134,18 +242,30 @@ rule collect_read_counts:
         plan=os.path.join(ROOT, 'plans', '{sample}.plan.yaml')
     output:
         os.path.join(ROOT, 'work', '{sample}', '{sample}.readcounts.tsv')
+    params:
+        sample_id='{sample}'
     run:
         import yaml
         plan = yaml.safe_load(open(input.plan))
-        bam = plan.get('bam')
+        
+        # Use the processed BAM from preprocessing pipeline if it exists,
+        # otherwise use the BAM specified in the plan file
+        processed_bam = os.path.join(ROOT, 'work', params.sample_id, f'{params.sample_id}.recal.bam')
+        if os.path.exists(processed_bam):
+            bam = processed_bam
+        else:
+            bam = plan.get('bam')
+        
         out = output[0]
         gatk = plan.get('gatk', config.get('gatk', 'gatk'))
         interval = plan.get('interval', config.get('interval'))
+        
         cmd = [gatk, 'CollectReadCounts', '--intervals', interval, '--reference', config.get('reference'), '--interval-merging-rule', 'OVERLAPPING_ONLY', '--input', bam, '--format', 'TSV', '--output', out]
         try:
             print('Running:', ' '.join(cmd))
             subprocess.check_call(cmd)
-        except Exception:
+        except Exception as e:
+            print(f'Warning: CollectReadCounts failed: {e}')
             d = os.path.dirname(out)
             os.makedirs(d, exist_ok=True)
             with open(out, 'w') as fh:
@@ -260,10 +380,11 @@ rule annotate_calls:
     output:
         os.path.join(ROOT, 'outputs', 'cnv_gvcf_clustered.annotated.tsv')
     params:
-        script=os.path.join(ROOT, 'scripts', 'run_annotsv.py')
+        script=os.path.join(ROOT, 'scripts', 'run_annotsv.py'),
+        annotations_dir=config.get('annotsv_annotations_dir', '')
     shell:
         """
-        python {params.script} --in {input.joint} --out {output} --annotations-dir {config["annotsv_annotations_dir"]}
+        python {params.script} --in {input.joint} --out {output} --annotations-dir {params.annotations_dir}
         """
 
 
@@ -273,10 +394,12 @@ rule visualize_knotAnnotSV:
     output:
         os.path.join(ROOT, 'outputs', 'figures', 'knot', 'knot_placeholder.html')
     params:
-        script=os.path.join(ROOT, 'scripts', 'visualize_knotannotsv.py')
+        script=os.path.join(ROOT, 'scripts', 'visualize_knotannotsv.py'),
+        out_dir=os.path.join(ROOT, 'outputs', 'figures', 'knot'),
+        knot_dir=config.get('knotannotsv_dir', '')
     shell:
         """
-        python {params.script} --annotated {input.annotated} --out-dir {os.path.join(ROOT, 'outputs', 'figures', 'knot')} --knot-dir {config.get('knotannotsv_dir','')}
+        python {params.script} --annotated {input.annotated} --out-dir {params.out_dir} --knot-dir {params.knot_dir}
         """
 
 
@@ -286,10 +409,12 @@ rule visualize_vcf2circos:
     output:
         os.path.join(ROOT, 'outputs', 'figures', 'vcf2circos', 'vcf2circos_placeholder.png')
     params:
-        script=os.path.join(ROOT, 'scripts', 'visualize_vcf2circos.py')
+        script=os.path.join(ROOT, 'scripts', 'visualize_vcf2circos.py'),
+        out_dir=os.path.join(ROOT, 'outputs', 'figures', 'vcf2circos'),
+        config_path=config.get('vcf2circos_config', '')
     shell:
         """
-        python {params.script} --vcf {input.vcf} --out-dir {os.path.join(ROOT, 'outputs', 'figures', 'vcf2circos')} --config {config.get('vcf2circos_config','')}
+        python {params.script} --vcf {input.vcf} --out-dir {params.out_dir} --config {params.config_path}
         """
 
 

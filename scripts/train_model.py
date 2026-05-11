@@ -1,25 +1,24 @@
 #!/usr/bin/env python3
-"""Train-model wrapper: create light-weight model artifacts or placeholder markers.
-This script is intentionally conservative for CI/smoke: it writes marker files and copies any existing model config templates.
-"""
+"""Train-model wrapper: invoke the Snakemake train_models rule."""
 import argparse
-from utils import write_json, ensure_parent_dir
-
-
-def write_placeholder_model(path):
-    cfg = {'trained': True, 'created_by': 'train_model.py'}
-    write_json(path, cfg)
+import os
+import subprocess
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--out-baseline', required=True)
-    parser.add_argument('--out-ploidy', required=True)
+    parser = argparse.ArgumentParser(description='Run the Snakemake train_models rule')
+    parser.add_argument('--cores', type=int, default=1, help='Number of cores for Snakemake')
     args = parser.parse_args()
 
-    write_placeholder_model(args.out_baseline)
-    write_placeholder_model(args.out_ploidy)
-    print('Wrote model markers:', args.out_baseline, args.out_ploidy)
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    cmd = [
+        'snakemake',
+        '--snakefile', os.path.join(repo_root, 'workflow', 'Snakefile'),
+        '-R', 'train_models',
+        '--cores', str(args.cores),
+    ]
+    print('Running:', ' '.join(cmd))
+    subprocess.check_call(cmd, cwd=repo_root)
 
 
 if __name__ == '__main__':

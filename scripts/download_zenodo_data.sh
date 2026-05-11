@@ -19,7 +19,7 @@ files=(
 )
 
 # Create output directory
-output_dir="data/zenodo_downloads"
+output_dir="data/"
 mkdir -p $output_dir
 
 # Download each file

@@ -6,3 +6,5 @@ tests/smoke/tmp
 .git
 *.pyc
 .env
+outputs/
+work/

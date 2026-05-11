@@ -274,13 +274,77 @@ rule collect_read_counts:
 
 rule filter_intervals:
     input:
+        interval=os.path.join(ROOT, 'data', 'targets.preprocessed.500.interval_list'),
         annotated=os.path.join(ROOT, 'data', 'targets.preprocessed.500.annotated_intervals.tsv'),
         readcounts=expand(os.path.join(ROOT, 'work', '{sample}', '{sample}.readcounts.tsv'), sample=SAMPLES)
     output:
         os.path.join(ROOT, 'data', 'gc.filtered.500.interval_list')
     run:
+        gatk = config.get('gatk', 'gatk')
+        cmd = [gatk, 'FilterIntervals', '-L', input.interval, '--annotated-intervals', input.annotated, '--interval-merging-rule', 'OVERLAPPING_ONLY', '--output', output[0]]
+        for rc in input.readcounts:
+            cmd.extend(['-I', rc])
+        print('Running:', ' '.join(cmd))
+        subprocess.check_call(cmd)
+
+
+rule contig_ploidy_priors:
+    input:
+        interval=os.path.join(ROOT, 'data', 'targets.preprocessed.500.interval_list')
+    output:
+        os.path.join(ROOT, 'work', 'contig_ploidy_priors.tsv')
+    run:
+        contigs = []
+        with open(input.interval) as fh:
+            for line in fh:
+                if line.startswith('#') or not line.strip():
+                    continue
+                cols = line.strip().split() if '\t' not in line else line.strip().split('\t')
+                contig = cols[0]
+                if contig not in contigs:
+                    contigs.append(contig)
+        os.makedirs(os.path.dirname(output[0]), exist_ok=True)
         with open(output[0], 'w') as fh:
-            fh.write('chr20\t10000\t20000\n')
+            fh.write('CONTIG_NAME\tPLOIDY_PRIOR_0\tPLOIDY_PRIOR_1\tPLOIDY_PRIOR_2\tPLOIDY_PRIOR_3\n')
+            for contig in contigs:
+                fh.write(f'{contig}\t0.1\t0.3\t0.5\t0.1\n')
+
+
+rule train_ploidy_model:
+    input:
+        filtered=os.path.join(ROOT, 'data', 'gc.filtered.500.interval_list'),
+        readcounts=expand(os.path.join(ROOT, 'work', '{sample}', '{sample}.readcounts.tsv'), sample=SAMPLES),
+        contig_priors=os.path.join(ROOT, 'work', 'contig_ploidy_priors.tsv')
+    output:
+        directory(os.path.join(ROOT, 'model', 'ploidy-model'))
+    run:
+        gatk = config.get('gatk', 'gatk')
+        outdir = output[0]
+        cmd = [gatk, 'DetermineGermlineContigPloidy', '-L', input.filtered, '--interval-merging-rule', 'OVERLAPPING_ONLY']
+        for rc in input.readcounts:
+            cmd.extend(['-I', rc])
+        cmd.extend(['--contig-ploidy-priors', input.contig_priors, '--output', outdir, '--output-prefix', 'ploidy', '--verbosity', 'DEBUG'])
+        print('Running:', ' '.join(cmd))
+        subprocess.check_call(cmd)
+
+
+rule train_baseline_model:
+    input:
+        filtered=os.path.join(ROOT, 'data', 'gc.filtered.500.interval_list'),
+        annotated=os.path.join(ROOT, 'data', 'targets.preprocessed.500.annotated_intervals.tsv'),
+        readcounts=expand(os.path.join(ROOT, 'work', '{sample}', '{sample}.readcounts.tsv'), sample=SAMPLES),
+        ploidy=os.path.join(ROOT, 'model', 'ploidy-model', 'ploidy-calls')
+    output:
+        directory(os.path.join(ROOT, 'model', 'baseline-model'))
+    run:
+        gatk = config.get('gatk', 'gatk')
+        outdir = output[0]
+        cmd = [gatk, 'GermlineCNVCaller', '--run-mode', 'COHORT', '-L', input.filtered, '--annotated-intervals', input.annotated, '--interval-merging-rule', 'OVERLAPPING_ONLY']
+        for rc in input.readcounts:
+            cmd.extend(['-I', rc])
+        cmd.extend(['--contig-ploidy-calls', input.ploidy, '--output', outdir, '--output-prefix', 'baseline', '--verbosity', 'DEBUG'])
+        print('Running:', ' '.join(cmd))
+        subprocess.check_call(cmd)
 
 
 rule determine_germline_contig_ploidy:
@@ -351,27 +415,39 @@ rule postprocess_germline_cnv_calls:
 
 rule train_models:
     input:
-        expand(os.path.join(ROOT, 'plans', '{sample}.plan.yaml'), sample=SAMPLES)
+        baseline=os.path.join(ROOT, 'model', 'baseline-model'),
+        ploidy=os.path.join(ROOT, 'model', 'ploidy-model')
     output:
-        os.path.join(ROOT, 'model', 'baseline-model', '.trained'),
-        os.path.join(ROOT, 'model', 'ploidy-model', '.trained')
-    params:
-        script=os.path.join(ROOT, 'scripts', 'train_model.py')
-    shell:
-        'python {params.script} --out-baseline {output[0]} --out-ploidy {output[1]}'
+        os.path.join(ROOT, 'model', 'train_models.complete')
+    run:
+        os.makedirs(os.path.dirname(output[0]), exist_ok=True)
+        with open(output[0], 'w') as fh:
+            fh.write('train_models completed\n')
 
 
 rule joint_segmentation:
     input:
-        segments=expand(os.path.join(ROOT, 'outputs', '{sample}.genotyped-segments.vcf.gz'), sample=SAMPLES)
+        segments=expand(os.path.join(ROOT, 'outputs', '{sample}.genotyped-segments.vcf.gz'), sample=SAMPLES),
+        interval=config.get('joint_segmentation_interval', os.path.join(ROOT, 'data', 'gc.filtered.500.interval_list')),
+        pedigree=config.get('joint_segmentation_pedigree')
     output:
         os.path.join(ROOT, 'outputs', 'cnv_gvcf_clustered.vcf.gz')
     params:
         script=os.path.join(ROOT, 'scripts', 'joint_calling.py')
-    shell:
-        """
-        python {params.script} --inputs {input.segments} --out {output}
-        """
+    run:
+        gatk = config.get('gatk', 'gatk')
+        cmd = [
+            'python', params.script,
+            '--gatk', gatk,
+            '--reference', config.get('reference'),
+            '--interval', input.interval,
+            '--pedigree', input.pedigree,
+            '--out', output[0]
+        ]
+        for segment_vcf in input.segments:
+            cmd.extend(['--inputs', segment_vcf])
+        print('Running:', ' '.join(cmd))
+        subprocess.check_call(cmd)
 
 
 rule annotate_calls:

@@ -4,6 +4,8 @@
 reference: ../data/hg19_chr20.fa.gz
 reference_dict: ../data/hg19_chr20.dict
 interval: ../data/targets.preprocessed.500.interval_list
+joint_segmentation_interval: ../data/gc.filtered.500.interval_list
+joint_segmentation_pedigree: ../data/test_samples_pedigree.ped
 model: ../model/baseline-model
 ploidy_model: ../model/ploidy-model
 workdir: ../work

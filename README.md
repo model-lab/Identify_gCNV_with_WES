@@ -64,6 +64,65 @@ snakemake --snakefile workflow/Snakefile --configfile plans/example.plan.yaml --
 
 ## Execution Logic
 
+### Two Workflow Modes
+
+This workflow supports two primary modes of execution:
+
+#### Mode 1: CNV Detection with Pre-trained Models (Recommended for most users)
+Use pre-trained baseline and ploidy models stored in `model/baseline-model` and `model/ploidy-model` to call CNVs on new samples.
+
+**When to use:** When you have trained models and want to identify CNVs in new samples.
+
+**Typical workflow:**
+```bash
+cd starpro_github
+python scripts/agents/plan_agent.py --sample HG00099 --bam ../data/bam/HG00099.recal.bam --out ../plans/HG00099.plan.yaml
+snakemake --snakefile workflow/Snakefile --configfile ../plans/HG00099.plan.yaml --cores 4
+```
+
+The workflow will:
+1. Preprocess BAM files (alignment, duplicate marking, BQSR)
+2. Collect read counts using the interval list
+3. Use the pre-trained models to call CNVs
+4. Perform joint segmentation across samples using GATK JointGermlineCNVSegmentation and the project pedigree file
+5. Annotate clustered CNV calls with AnnotSV
+6. Generate visualization outputs (knotAnnotSV, vcf2circos, PlotCNV/HandyCNV placeholders)
+
+#### Mode 2: Model Training + CNV Detection
+Train models from scratch using control samples, then perform CNV detection on query samples.
+
+**When to use:** When you want to train population-specific or cohort-specific models.
+
+**Key steps:**
+1. Prepare BAM files for training samples and place them in `data/bam/`
+2. Generate plan files for all samples (both training and query samples)
+3. Invoke the `train_models` rule explicitly
+4. The CNV calling workflow will use the newly trained models
+
+**Example commands:**
+```bash
+cd starpro_github
+
+# Step 1: Generate plans for all samples (training + query)
+python scripts/agents/plan_agent.py --sample CTRL001 --bam ../data/bam/CTRL001.recal.bam --out ../plans/CTRL001.plan.yaml
+python scripts/agents/plan_agent.py --sample CASE001 --bam ../data/bam/CASE001.recal.bam --out ../plans/CASE001.plan.yaml
+
+# Step 2: Explicitly run the model training rule
+snakemake --snakefile workflow/Snakefile -R train_models --cores 4
+
+# Step 3: Now run the full CNV detection workflow
+snakemake --snakefile workflow/Snakefile --cores 4
+```
+
+The full workflow includes annotation of the joint clustered VCF via AnnotSV and generation of visualization outputs such as knotAnnotSV and vcf2circos.
+
+**Important notes:**
+- Model training uses control samples to learn background read count variation
+- The Snakemake workflow now implements the core training steps in `train_models` via `train_ploidy_model` and `train_baseline_model`
+- `scripts/train_model.py` is a convenience wrapper that invokes the Snakemake training rule
+- Training parameters (epochs, sample fraction) can be configured in `workflow/config.yaml` under `model_training:`
+- Once models are trained and saved to `model/baseline-model` and `model/ploidy-model`, subsequent runs will use these trained models
+
 ### Plan Mode
 Prioritizes per-sample plan files in `plans/`. Plan files specify sample name, BAM path, reference sequence, interval list, model path, GATK command, work directory, and other information.
 
@@ -75,8 +134,10 @@ Main configuration file: `starpro_github/workflow/config.yaml`
 
 This file includes:
 - Reference genome, dictionary, interval list, model paths
+- Joint segmentation settings, including the filtered interval list and pedigree file
 - Tool command names like GATK, BWA, samtools, Picard
 - Visualization tools and annotation resource paths
+- Model training parameters under `model_training:` section
 
 `plan_agent.py` reads defaults from this file to generate plan files, facilitating consistent paths across different machines.
 

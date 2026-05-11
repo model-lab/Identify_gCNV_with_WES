@@ -1,7 +1,7 @@
 # Identify_gCNV_with_WES
 
 ## Overview
-This directory contains the core implementation of the CNV detection workflow in this repository. It uses Snakemake to manage CNV analysis from whole-exome sequencing (WES). The entry points are `starpro_github/workflow/Snakefile` and `starpro_github/workflow/config.yaml`, with `scripts/agents/` providing helper scripts for plan generation, execution, QC, and publishing.
+This directory contains the core implementation of the CNV detection workflow in this repository. It uses Snakemake to manage CNV analysis from whole-exome sequencing (WES). The entry points are `./workflow/Snakefile` and `./workflow/config.yaml`, with `scripts/agents/` providing helper scripts for plan generation, execution, QC, and publishing.
 
 ## Repository layout
 - `workflow/`: Snakemake `Snakefile`, `config.yaml`, tests, and workflow resources
@@ -17,7 +17,7 @@ This directory contains the core implementation of the CNV detection workflow in
 ### 1. Install Dependencies
 Conda is recommended:
 ```bash
-cd starpro_github
+cd Identify_gCNV_with_WES/
 conda env create -f environment.yml
 conda activate cnv_workflow
 ```
@@ -26,39 +26,39 @@ If you prefer Docker, see the "Docker Usage" section.
 
 ### 2. Download Annotation Resources
 ```bash
-cd starpro_github
+cd Identify_gCNV_with_WES/
 bash scripts/download_zenodo_data.sh
 ```
 
 ### 3. Generate Per-Sample Plan Files
-It is recommended to use plan files to drive the workflow. Example plan files are located in the root directory `plans/EXAMPLE.plan.yaml` or in this directory `starpro_github/plans/example.plan.yaml`.
+It is recommended to use plan files to drive the workflow. Example plan files are located in the root directory `plans/EXAMPLE.plan.yaml` or in this directory `Identify_gCNV_with_WES/plans/example.plan.yaml`.
 
-Run the plan generation script from `starpro_github/`:
+Run the plan generation script from `Identify_gCNV_with_WES/`:
 ```bash
-cd starpro_github
+cd Identify_gCNV_with_WES
 python scripts/agents/plan_agent.py --sample HG00099 --bam ../data/bam/HG00099.recal.bam --out ../plans/HG00099.plan.yaml
 ```
 
-This script reads default values from `starpro_github/workflow/config.yaml` and generates a plan file that can be used directly with Snakemake.
+This script reads default values from `Identify_gCNV_with_WES/workflow/config.yaml` and generates a plan file that can be used directly with Snakemake.
 
 ### 4. Run Snakemake
-Execute from the `starpro_github/` directory. The default workflow prioritizes plan files in `plans/`, falling back to `data/bam/*.bam` if no plans are found.
+Execute from the `Identify_gCNV_with_WES/` directory. The default workflow prioritizes plan files in `plans/`, falling back to `data/bam/*.bam` if no plans are found.
 
 Dry-run to verify:
 ```bash
-cd starpro_github
+cd Identify_gCNV_with_WES
 snakemake --snakefile workflow/Snakefile --configfile ../plans/EXAMPLE.plan.yaml -n
 ```
 
 Execute formally:
 ```bash
-cd starpro_github
+cd Identify_gCNV_with_WES
 snakemake --snakefile workflow/Snakefile --configfile ../plans/EXAMPLE.plan.yaml --cores 4
 ```
 
 If using the example plan in this directory:
 ```bash
-cd starpro_github
+cd Identify_gCNV_with_WES
 snakemake --snakefile workflow/Snakefile --configfile plans/example.plan.yaml --cores 4
 ```
 
@@ -75,7 +75,7 @@ Use pre-trained baseline and ploidy models stored in `model/baseline-model` and 
 
 **Typical workflow:**
 ```bash
-cd starpro_github
+cd Identify_gCNV_with_WES
 python scripts/agents/plan_agent.py --sample HG00099 --bam ../data/bam/HG00099.recal.bam --out ../plans/HG00099.plan.yaml
 snakemake --snakefile workflow/Snakefile --configfile ../plans/HG00099.plan.yaml --cores 4
 ```
@@ -101,7 +101,7 @@ Train models from scratch using control samples, then perform CNV detection on q
 
 **Example commands:**
 ```bash
-cd starpro_github
+cd Identify_gCNV_with_WES
 
 # Step 1: Generate plans for all samples (training + query)
 python scripts/agents/plan_agent.py --sample CTRL001 --bam ../data/bam/CTRL001.recal.bam --out ../plans/CTRL001.plan.yaml
@@ -130,7 +130,7 @@ Prioritizes per-sample plan files in `plans/`. Plan files specify sample name, B
 If no plan files exist in `plans/`, the Snakefile automatically scans `data/bam/*.bam` and generates default inputs based on sample names. This mode is suitable for quick tests or simple data structures, but plan files are recommended for explicit path and parameter management.
 
 ### Configuration File Description
-Main configuration file: `starpro_github/workflow/config.yaml`
+Main configuration file: `Identify_gCNV_with_WES/workflow/config.yaml`
 
 This file includes:
 - Reference genome, dictionary, interval list, model paths
@@ -145,39 +145,39 @@ This file includes:
 
 - Generate a plan:
 ```bash
-cd starpro_github
+cd Identify_gCNV_with_WES
 python scripts/agents/plan_agent.py --sample HG00099 --bam ../data/bam/HG00099.recal.bam --out ../plans/HG00099.plan.yaml
 ```
 
 - Validate and print the run command:
 ```bash
-cd starpro_github
+cd Identify_gCNV_with_WES
 python scripts/agents/run_agent.py --plan ../plans/HG00099.plan.yaml --cores 2
 ```
 
 - Execute the plan directly:
 ```bash
-cd starpro_github
+cd Identify_gCNV_with_WES
 python scripts/agents/run_agent.py --plan ../plans/HG00099.plan.yaml --cores 4 --execute
 ```
 
 - Generate QC report:
 ```bash
-cd starpro_github
+cd Identify_gCNV_with_WES
 python scripts/agents/qc_agent.py --plan ../plans/HG00099.plan.yaml --out ../outputs/HG00099.qc.yaml
 ```
 
 - Package for publishing:
 ```bash
-cd starpro_github
+cd Identify_gCNV_with_WES
 python scripts/agents/publish_agent.py --plan ../plans/HG00099.plan.yaml --out-dir ../outputs/publish/HG00099 --package
 ```
 
 ## Docker Usage
 
-To use Docker, build the image in the `starpro_github/` directory:
+To use Docker, build the image in the `Identify_gCNV_with_WES/` directory:
 ```bash
-cd starpro_github
+cd Identify_gCNV_with_WES
 docker build -t cnv-detection .
 ```
 
@@ -185,7 +185,7 @@ Recommended: Mount the entire repository and run inside the container:
 ```bash
 docker run --rm -it \
   -v $(pwd):/workspace \
-  -w /workspace/starpro_github \
+  -w /workspace/Identify_gCNV_with_WES \
   cnv-detection \
   bash -lc "snakemake --snakefile workflow/Snakefile --configfile workflow/config.yaml -n"
 ```
@@ -193,7 +193,7 @@ docker run --rm -it \
 Mount only necessary directories:
 ```bash
 docker run --rm -it \
-  -v $(pwd)/starpro_github:/workspace \
+  -v $(pwd)/Identify_gCNV_with_WES:/workspace \
   -v $(pwd)/data:/workspace/data \
   -v $(pwd)/plans:/workspace/plans \
   -v $(pwd)/outputs:/workspace/outputs \
@@ -204,7 +204,7 @@ docker run --rm -it \
 
 ### Docker Tips
 - Avoid packaging large data files into the image; mount `data/`, `plans/`, `outputs/` externally.
-- Paths in `workflow/config.yaml` are typically relative, so use `starpro_github/` as the container working directory.
+- Paths in `workflow/config.yaml` are typically relative, so use `Identify_gCNV_with_WES/` as the container working directory.
 
 ## Common Commands
 - Create Conda environment: `make env-conda`
@@ -216,8 +216,8 @@ docker run --rm -it \
 
 ## Other Notes
 - When using `plans/` mode, ensure that `bam` and `workpath` entries in the plan point to correct files or directories.
-- Modify `starpro_github/workflow/config.yaml` according to your local environment for tool command names and resource paths.
-- `starpro_github/scripts/agents/plan_agent.py` checks BAM file size and provides notes for small BAM files.
+- Modify `Identify_gCNV_with_WES/workflow/config.yaml` according to your local environment for tool command names and resource paths.
+- `Identify_gCNV_with_WES/scripts/agents/plan_agent.py` checks BAM file size and provides notes for small BAM files.
 
 ## License
 This project is licensed under the MIT License.

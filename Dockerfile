@@ -10,7 +10,7 @@ RUN conda config --set always_yes yes --set changeps1 no \
     && conda env create -f environment.yml \
     && conda clean -afy
 
-# Ensure the environment is on PATH
+# Ensure the environment is on PATH, the name defined in environment.yml is cnv_workflow
 RUN echo "conda activate cnv_workflow" >> ~/.bashrc
 ENV PATH /opt/conda/envs/cnv_workflow/bin:$PATH
 

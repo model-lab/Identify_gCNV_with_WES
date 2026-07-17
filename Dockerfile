@@ -11,6 +11,7 @@ RUN conda config --set always_yes yes --set changeps1 no \
     && conda clean -afy
 
 # Ensure the environment is on PATH
+RUN echo "conda activate cnv_workflow" >> ~/.bashrc
 ENV PATH /opt/conda/envs/cnv_workflow/bin:$PATH
 
 # Copy repository into container

@@ -5,15 +5,15 @@ channels:
   - defaults
 dependencies:
   - python=3.10
-  - snakemake>=7.0
+  - snakemake>=8.28.0
   - gatk=4.5.0.0
-  - bwa
-  - samtools
-  - picard
-  - pyyaml
-  - pandas
-  - matplotlib
-  - pip
+  - bwa=0.7.17
+  - samtools=1.14
+  - picard=2.25.1
+  - pyyaml=6.0.3
+  - pandas=2.3.3
+  - matplotlib=3.10.8
+  - pip=25.3
 
 # Notes: add additional R packages or tools (AnnotSV, knotAnnotSV, PlotCNV, HandyCNV)
 # via system package managers or container images when preparing production runs.

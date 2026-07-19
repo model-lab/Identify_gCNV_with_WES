@@ -185,7 +185,7 @@ Recommended: Mount the entire repository and run inside the container:
 ```bash
 docker run --rm -it \
   -v $(pwd):/workspace \
-  -w /workspace/Identify_gCNV_with_WES \
+  -w /workspace \
   cnv-detection \
   bash -lc "snakemake --snakefile workflow/Snakefile --configfile workflow/config.yaml -n"
 ```

@@ -5,6 +5,8 @@ channels:
   - defaults
 dependencies:
   - python=3.10
+  - R=4.0.3
+  - perl=5.34.1
   - snakemake>=8.28.0
   - gatk=4.5.0.0
   - bwa=0.7.17

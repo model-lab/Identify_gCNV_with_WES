@@ -18,6 +18,12 @@ files=(
   "test_samples_pedigree.ped"
 )
 
+zenodo_v2_base_url="https://zenodo.org/record/22047704/files"
+v2_files=(
+  "EXAMPLE.bam"
+  "EXAMPLE.bam.bai"
+)
+
 # Create output directory
 output_dir="data/"
 mkdir -p "$output_dir" || { echo "Error: Failed to create directory $output_dir"; exit 1; }
@@ -42,11 +48,29 @@ for file in "${files[@]}"; do
   echo "Downloading $file..."
   
   if [ "$downloader" = "wget" ]; then
-    # --nv reduces verbosity but keeps errors; --show-progress keeps a clean progress bar
-    wget --nv --show-progress -O "$output_dir/$file" "$zenodo_base_url/$file"
+    # --show-progress keeps a clean progress bar
+    wget --show-progress -O "$output_dir/$file" "$zenodo_base_url/$file"
   else
     # -f makes curl fail on HTTP errors (like 404); -L follows redirects
     curl -f -L -o "$output_dir/$file" "$zenodo_base_url/$file"
+  fi
+
+  # Check the exit status of the downloader tool
+  if [ $? -ne 0 ]; then
+    echo "Error: Failed to download $file" >&2
+    failed_downloads=$((failed_downloads + 1))
+  fi
+done
+
+for file in "${v2_files[@]}"; do
+  echo "Downloading $file..."
+  
+  if [ "$downloader" = "wget" ]; then
+    # --show-progress keeps a clean progress bar
+    wget --show-progress -O "$output_dir/bam/$file" "$zenodo_v2_base_url/$file"
+  else
+    # -f makes curl fail on HTTP errors (like 404); -L follows redirects
+    curl -f -L -o "$output_dir/bam/$file" "$zenodo_v2_base_url/$file"
   fi
 
   # Check the exit status of the downloader tool

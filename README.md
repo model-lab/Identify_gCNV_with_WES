@@ -36,7 +36,7 @@ It is recommended to use plan files to drive the workflow. Example plan files ar
 Run the plan generation script from `Identify_gCNV_with_WES/`:
 ```bash
 cd Identify_gCNV_with_WES
-python scripts/agents/plan_agent.py --sample HG00099 --bam ../data/bam/HG00099.recal.bam --out ../plans/HG00099.plan.yaml
+python scripts/agents/plan_agent.py --sample HG00099 --bam data/bam/HG00099.recal.bam --out plans/HG00099.plan.yaml
 ```
 
 This script reads default values from `Identify_gCNV_with_WES/workflow/config.yaml` and generates a plan file that can be used directly with Snakemake.
@@ -47,19 +47,19 @@ Execute from the `Identify_gCNV_with_WES/` directory. The default workflow prior
 Dry-run to verify:
 ```bash
 cd Identify_gCNV_with_WES
-snakemake --snakefile workflow/Snakefile --configfile ../plans/EXAMPLE.plan.yaml -n
+snakemake --snakefile workflow/Snakefile --configfile plans/EXAMPLE.plan.yaml -n
 ```
 
 Execute formally:
 ```bash
 cd Identify_gCNV_with_WES
-snakemake --snakefile workflow/Snakefile --configfile ../plans/EXAMPLE.plan.yaml --cores 4
+snakemake --snakefile workflow/Snakefile --configfile plans/EXAMPLE.plan.yaml --cores 4
 ```
 
 If using the example plan in this directory:
 ```bash
 cd Identify_gCNV_with_WES
-snakemake --snakefile workflow/Snakefile --configfile plans/example.plan.yaml --cores 4
+snakemake --snakefile workflow/Snakefile --configfile plans/EXAMPLE.plan.yaml --cores 4
 ```
 
 ## Execution Logic
@@ -76,8 +76,8 @@ Use pre-trained baseline and ploidy models stored in `model/baseline-model` and 
 **Typical workflow:**
 ```bash
 cd Identify_gCNV_with_WES
-python scripts/agents/plan_agent.py --sample HG00099 --bam ../data/bam/HG00099.recal.bam --out ../plans/HG00099.plan.yaml
-snakemake --snakefile workflow/Snakefile --configfile ../plans/HG00099.plan.yaml --cores 4
+python scripts/agents/plan_agent.py --sample HG00099 --bam data/bam/HG00099.recal.bam --out plans/HG00099.plan.yaml
+snakemake --snakefile workflow/Snakefile --configfile plans/HG00099.plan.yaml --cores 4
 ```
 
 The workflow will:
@@ -104,8 +104,8 @@ Train models from scratch using control samples, then perform CNV detection on q
 cd Identify_gCNV_with_WES
 
 # Step 1: Generate plans for all samples (training + query)
-python scripts/agents/plan_agent.py --sample CTRL001 --bam ../data/bam/CTRL001.recal.bam --out ../plans/CTRL001.plan.yaml
-python scripts/agents/plan_agent.py --sample CASE001 --bam ../data/bam/CASE001.recal.bam --out ../plans/CASE001.plan.yaml
+python scripts/agents/plan_agent.py --sample CTRL001 --bam data/bam/CTRL001.recal.bam --out plans/CTRL001.plan.yaml
+python scripts/agents/plan_agent.py --sample CASE001 --bam data/bam/CASE001.recal.bam --out plans/CASE001.plan.yaml
 
 # Step 2: Explicitly run the model training rule
 snakemake --snakefile workflow/Snakefile -R train_models --cores 4
@@ -146,31 +146,31 @@ This file includes:
 - Generate a plan:
 ```bash
 cd Identify_gCNV_with_WES
-python scripts/agents/plan_agent.py --sample HG00099 --bam ../data/bam/HG00099.recal.bam --out ../plans/HG00099.plan.yaml
+python scripts/agents/plan_agent.py --sample HG00099 --bam data/bam/HG00099.recal.bam --out plans/HG00099.plan.yaml
 ```
 
 - Validate and print the run command:
 ```bash
 cd Identify_gCNV_with_WES
-python scripts/agents/run_agent.py --plan ../plans/HG00099.plan.yaml --cores 2
+python scripts/agents/run_agent.py --plan plans/HG00099.plan.yaml --cores 2
 ```
 
 - Execute the plan directly:
 ```bash
 cd Identify_gCNV_with_WES
-python scripts/agents/run_agent.py --plan ../plans/HG00099.plan.yaml --cores 4 --execute
+python scripts/agents/run_agent.py --plan plans/HG00099.plan.yaml --cores 4 --execute
 ```
 
 - Generate QC report:
 ```bash
 cd Identify_gCNV_with_WES
-python scripts/agents/qc_agent.py --plan ../plans/HG00099.plan.yaml --out ../outputs/HG00099.qc.yaml
+python scripts/agents/qc_agent.py --plan plans/HG00099.plan.yaml --out outputs/HG00099.qc.yaml
 ```
 
 - Package for publishing:
 ```bash
 cd Identify_gCNV_with_WES
-python scripts/agents/publish_agent.py --plan ../plans/HG00099.plan.yaml --out-dir ../outputs/publish/HG00099 --package
+python scripts/agents/publish_agent.py --plan plans/HG00099.plan.yaml --out-dir outputs/publish/HG00099 --package
 ```
 
 ## Docker Usage

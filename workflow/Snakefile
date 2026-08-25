@@ -5,8 +5,7 @@ import subprocess
 configfile: "config.yaml"
 
 # Repository root
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-
+ROOT = os.path.abspath(os.path.join(workflow.basedir, '..'))
 # Discover samples via plans/ or data/bam
 PLAN_DIR = os.path.join(ROOT, 'plans')
 plan_files = sorted(glob.glob(os.path.join(PLAN_DIR, '*.plan.yaml')))
